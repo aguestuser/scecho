@@ -21,10 +21,10 @@ object Main extends App {
 
 case class Server(port: Int) {
   val server = AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(port))
-  server.accept(null, new CompletionHandler{
-    def completed(buf: ByteBuffer) = {
+  server.accept(null, new CompletionHandler {
+    def completed(buf: ByteBuffer, /* what goes here?*/) = {
       buf.clear()
-
+      /// WHAT GOES HERE?
     }
   })
 }
