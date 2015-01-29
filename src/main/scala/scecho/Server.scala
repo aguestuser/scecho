@@ -57,7 +57,7 @@ case class Server(port: Int) {
 
   }
 
-  def write(bs: Array[Byte], chn: AsynchronousSocketChannel)(implicit executor: ExecutionContext): Future[Unit] = {
+  def write(bs: Array[Byte], chn: AsynchronousSocketChannel): Future[Unit] = {
     val done = (numWritten:Integer) => numWritten == bs.size
     for {
       nw <- writeOnce(bs, chn)
