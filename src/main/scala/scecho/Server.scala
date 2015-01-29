@@ -21,7 +21,7 @@ object Main extends App {
 
 case class Server(port: Int) {
   val server = AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(port))
-  val buf = ByteBuffer.allocate(1024) // <- is this where i should declare this?
+  var buf = ByteBuffer.allocate(1024) // <- is this where i should declare this?
 
   server.accept(null, new CompletionHandler {
     def completed(chn: AsynchronousSocketChannel, /* what goes here? What is a `_ >:NotInferredA` ???*/) = {
