@@ -56,13 +56,13 @@ case class Server(port: Int) {
     p.future
 
   }
+
   def write(bs: Array[Byte], chn: AsynchronousSocketChannel)(implicit executor: ExecutionContext): Future[Unit] = {
+    val pr = (numWritten:Integer) => numWritten == bs.size
     for {
-      numWritten <- writeOnce(bs, chn)
-    } yield {
-      if (numWritten == bs.length) Future.successful(())
-      else write(bs.drop(numWritten), chn)
-    }
+      nw <- writeOnce(bs, chn)
+      res <- { if(pr(nw)) Future.successful(()) else write(bs.drop(nw), chn) }
+    } yield res
   }
 
   def writeOnce(bs: Array[Byte], chn: AsynchronousSocketChannel): Future[Integer] = {
@@ -101,3 +101,13 @@ case class Server(port: Int) {
 //cnxn onFailure {
 //  case e => throw e
 //}
+
+
+// CHALLENGE:
+
+//Another challenge, this time without hints :), is to see if you can come up with an implementation for something like the Task.asyncfunction we looked at a while ago. To make the challenge extra challenging, I'm not even going to give an example; all you get is the following:
+//val f: Future[Int] = asyncF { cb =>
+// use the callback to either signal, hey, everything worked out,
+// we can fill in f with a real Int;
+// or shoot, we weren't able to get an Int after all, so signal failure somehow
+}
