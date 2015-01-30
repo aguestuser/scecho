@@ -2,8 +2,10 @@ package scecho
 
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
-import java.nio.channels.{AsynchronousSocketChannel, CompletionHandler, AsynchronousServerSocketChannel}
-import scala.concurrent.{ExecutionContext, Promise, Future}
+import java.nio.channels.{AsynchronousServerSocketChannel, AsynchronousSocketChannel, CompletionHandler}
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import ExecutionContext.Implicits.global
 import scala.util.{Failure, Success, Try}
 
 /**
@@ -16,12 +18,13 @@ object Main extends App {
     case Failure(e) => throw new IllegalArgumentException("Argument to scecho must be a valid Integer")
     case Success(i) =>
 
-      val server = Server(i)
+      val chn = Future { AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(i)) }
 
       val result = for {
-        chn <- server.accept(server.chn)
-        input <- server.read(chn)
-        output <- server.write(input, chn)
+        ch <- chn
+        ch <- Server.accept(ch)
+        input <- Server.read(ch)
+        output <- Server.write(input, ch)
       } yield output
 
       result onSuccess { case res => println("Finished echoing!") }
@@ -29,18 +32,22 @@ object Main extends App {
   }
 }
 
-case class Server(port: Int) {
+//case class Server(port: Int) {
 
-  val chn = AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(port))
+object Server {
 
-  def accept(chn: AsynchronousServerSocketChannel): Future[AsynchronousSocketChannel] = {
-    val p = Promise[AsynchronousSocketChannel]()
-    chn.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-      def completed(client: AsynchronousSocketChannel, att: Void) =  p success { client }
-      def failed(e: Throwable, att: Void) = p failure { e }
-    })
-    p.future
-  }
+    def accept(chn: AsynchronousServerSocketChannel): Future[AsynchronousSocketChannel] = {
+      val p = Promise[AsynchronousSocketChannel]()
+      chn.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
+        def completed(cnxn: AsynchronousSocketChannel, att: Void) =  p success {
+          println("Client connection received from %d".formatted(cnxn.getLocalAddress.toString))
+          cnxn
+        }
+        def failed(e: Throwable, att: Void) = p failure { e }
+      })
+      p.future
+    }
+
 
   def read(chn: AsynchronousSocketChannel): Future[Array[Byte]] = {
     val buf = ByteBuffer.allocate(1024)
@@ -79,6 +86,22 @@ case class Server(port: Int) {
 }
 
 
+//  val chn = AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(port))
+
+//  def accept(chn: AsynchronousServerSocketChannel): Future[AsynchronousSocketChannel] = {
+//    val p = Promise[AsynchronousSocketChannel]()
+//
+//    chn.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
+//      def completed(cnxn: AsynchronousSocketChannel, att: Void) =  p success {
+//        println("Client connection received from %d".formatted(cnxn.getLocalAddress.toString))
+//        cnxn
+//      }
+//      def failed(e: Throwable, att: Void) = p failure { e }
+//    })
+//    p.future
+//  }
+
+
 //i **THINK** the for comprehension in the main loop
 //does more or less the below. is that right?
 //
@@ -110,4 +133,4 @@ case class Server(port: Int) {
 // use the callback to either signal, hey, everything worked out,
 // we can fill in f with a real Int;
 // or shoot, we weren't able to get an Int after all, so signal failure somehow
-}
+//}
