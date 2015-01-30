@@ -18,13 +18,10 @@ object Main extends App {
     case Failure(e) => throw new IllegalArgumentException("Argument to scecho must be a valid Integer")
     case Success(i) =>
 
-      val chn = Future { AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(i)) }
-
       val result = for {
-        ch <- chn
-        ch <- Server.accept(ch)
-        input <- Server.read(ch)
-        output <- Server.write(input, ch)
+        chn <- Server.listenOn(i)
+        input <- Server.read(chn)
+        output <- Server.write(input, chn)
       } yield output
 
       result onSuccess { case res => println("Finished echoing!") }
@@ -36,17 +33,21 @@ object Main extends App {
 
 object Server {
 
-    def accept(chn: AsynchronousServerSocketChannel): Future[AsynchronousSocketChannel] = {
-      val p = Promise[AsynchronousSocketChannel]()
-      chn.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-        def completed(cnxn: AsynchronousSocketChannel, att: Void) =  p success {
-          println("Client connection received from %d".formatted(cnxn.getLocalAddress.toString))
-          cnxn
+  def listenOn(port: Int): Future[AsynchronousSocketChannel] = {
+    val p = Promise[AsynchronousSocketChannel]()
+    AsynchronousServerSocketChannel
+      .open()
+      .bind(new InetSocketAddress(port))
+      .accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
+        def completed(cnxn: AsynchronousSocketChannel, att: Void) = {
+          println("Client connection received from %s".format(cnxn.getLocalAddress.toString))
+          p success { cnxn }
         }
         def failed(e: Throwable, att: Void) = p failure { e }
       })
-      p.future
-    }
+    println("Scecho up and listening on port %d".format(port))
+    p.future
+  }
 
 
   def read(chn: AsynchronousSocketChannel): Future[Array[Byte]] = {
