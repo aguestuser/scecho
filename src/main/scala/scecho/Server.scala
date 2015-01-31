@@ -4,8 +4,9 @@ import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.{AsynchronousServerSocketChannel, AsynchronousSocketChannel, CompletionHandler}
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
-import ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future, Promise}
 import scala.util.{Failure, Success, Try}
 
 /**
@@ -14,18 +15,8 @@ import scala.util.{Failure, Success, Try}
 
 object Main extends App {
   Try(args(0).toInt) match {
-
     case Failure(e) => throw new IllegalArgumentException("Argument to scecho must be a valid Integer")
-    case Success(i) =>
-
-      val result = for {
-        chn <- Server.listenOn(i)
-        input <- Server.read(chn)
-        output <- Server.write(input, chn)
-      } yield output
-
-      result onSuccess { case res => println("Finished echoing!") }
-      result onFailure { case err => throw err }
+    case Success(i) => Server.listenOn(Server.getChannel(i))
   }
 }
 
@@ -33,29 +24,41 @@ object Main extends App {
 
 object Server {
 
-  def listenOn(port: Int): Future[AsynchronousSocketChannel] = {
-    val p = Promise[AsynchronousSocketChannel]()
-    AsynchronousServerSocketChannel
-      .open()
-      .bind(new InetSocketAddress(port))
-      .accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-        def completed(cnxn: AsynchronousSocketChannel, att: Void) = {
-          println("Client connection received from %s".format(cnxn.getLocalAddress.toString))
-          p success { cnxn }
-        }
-        def failed(e: Throwable, att: Void) = p failure { e }
-      })
-    println("Scecho up and listening on port %d".format(port))
-    p.future
+  def getChannel(port: Int): AsynchronousServerSocketChannel =
+    AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(port))
+
+  def listenOn(chn: AsynchronousServerSocketChannel) : Unit = {
+
+    println("Scecho listening on port %s".format(chn.getLocalAddress.toString))
+
+    val anEcho = for {
+      cnxn <- Server.accept(chn)
+      input <- Server.read(cnxn)
+      done <- Server.write(input, cnxn)
+    } yield done
+
+    Await.result(anEcho, Duration.Inf)
+    listenOn(chn)
   }
 
+  def accept(listener: AsynchronousServerSocketChannel): Future[AsynchronousSocketChannel] = {
+    val p = Promise[AsynchronousSocketChannel]()
+    listener.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
+      def completed(cnxn: AsynchronousSocketChannel, att: Void) = {
+        println("Client connection received from %s".format(cnxn.getLocalAddress.toString))
+        p success { cnxn }
+      }
+      def failed(e: Throwable, att: Void) = p failure { e }
+    })
+    p.future
+  }
 
   def read(chn: AsynchronousSocketChannel): Future[Array[Byte]] = {
     val buf = ByteBuffer.allocate(1024)
     val p = Promise[Array[Byte]]()
     chn.read(buf, null, new CompletionHandler[Integer, Void] {
       def completed(numRead: Integer, att: Void) = {
-        println("Read %d bytes".formatted(numRead.toString))
+        println("Read %s bytes".format(numRead.toString))
         buf.flip()
         p success { buf.array() }
       }
@@ -77,7 +80,7 @@ object Server {
     val p = Promise[Integer]()
     chn.write(ByteBuffer.wrap(bs), null, new CompletionHandler[Integer, Void] {
       def completed(numWritten: Integer, att: Void) = {
-        println("Echoed %d bytes".formatted(numWritten.toString))
+        println("Echoed %s bytes".format(numWritten.toString))
         p success { numWritten }
       }
       def failed(e: Throwable, att: Void) = p failure { e }
