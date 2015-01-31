@@ -27,17 +27,9 @@ object Server {
 
   def listenOn(chn: AsynchronousServerSocketChannel) : Unit = {
     println("Scecho listening on port %s".format(chn.getLocalAddress.toString))
-
-    val anEcho = for {
-      cnxn <- Server.accept(chn)
-      input <- Server.read(cnxn)
-      done <- Server.write(input, cnxn)
-    } yield done
-
-    Await.result(anEcho, Duration.Inf)
+    val cnxn = for { cn <- accept(chn) } yield talkTo(cn)
+    Await.result(cnxn, Duration.Inf)
     listenOn(chn)
-    // TODO create execution path that keeps connection to client alive
-    // until message received that says to close it
   }
 
   def accept(listener: AsynchronousServerSocketChannel): Future[AsynchronousSocketChannel] = {
@@ -52,10 +44,17 @@ object Server {
     p.future
   }
 
-  def read(chn: AsynchronousSocketChannel): Future[Array[Byte]] = {
-    val buf = ByteBuffer.allocate(1024)
+  def talkTo(cnxn: AsynchronousSocketChannel) : Unit = {
+    for {
+      input <- read(cnxn)
+      done <- echoOrExit(input, cnxn)
+    } yield done
+  }
+  
+  def read(cnxn: AsynchronousSocketChannel): Future[Array[Byte]] = {
+    val buf = ByteBuffer.allocate(1024) // TODO what happens to this memory allocation?
     val p = Promise[Array[Byte]]()
-    chn.read(buf, null, new CompletionHandler[Integer, Void] {
+    cnxn.read(buf, null, new CompletionHandler[Integer, Void] {
       def completed(numRead: Integer, att: Void) = {
         println("Read %s bytes".format(numRead.toString))
         buf.flip()
@@ -64,15 +63,21 @@ object Server {
       def failed(e: Throwable, att: Void) = p failure { e }
     })
     p.future
-
   }
 
-  def write(bs: Array[Byte], chn: AsynchronousSocketChannel): Future[Unit] = {
+  def echoOrExit(input: Array[Byte], cnxn: AsynchronousSocketChannel): Future[Unit] = {
+    val p = Promise[Unit]()
+    if (input == "exit".getBytes) p success { () }
+    else p success { write(input,cnxn) }
+    p.future
+  }
+
+  def write(bs: Array[Byte], cnxn: AsynchronousSocketChannel): Future[Unit] = {
     val done = (numWritten:Integer) => numWritten == bs.size
     for {
-      nw <- writeOnce(bs, chn)
-      res <- { if(done(nw)) Future.successful(()) else write(bs.drop(nw), chn) }
-    } yield res
+      nw <- writeOnce(bs, cnxn)
+      res <- { if(done(nw)) Future.successful(()) else write(bs.drop(nw), cnxn) }
+    } yield talkTo(cnxn)
   }
 
   def writeOnce(bs: Array[Byte], chn: AsynchronousSocketChannel): Future[Integer] = {
