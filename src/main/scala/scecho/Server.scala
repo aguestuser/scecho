@@ -13,7 +13,7 @@ import scala.concurrent.{Await, Future, Promise}
  */
 
 object Main extends App {
-  import Server._
+  import scecho.Server._
   try {
     listen(getChannel(args(0).toInt))
   } catch {
@@ -28,8 +28,9 @@ object Server {
 
   def listen(chn: AsynchronousServerSocketChannel) : Unit = {
     println(s"Scecho listening on port ${chn.getLocalAddress.toString}")
-    val cnxn = for { cn <- accept(chn) } yield talk(cn)
+    val cnxn = accept(chn)
     Await.result(cnxn, Duration.Inf)
+    cnxn onSuccess { case c => echo(c) }
     listen(chn)
   }
 
@@ -45,7 +46,7 @@ object Server {
     p.future
   }
 
-  def talk(cnxn: AsynchronousSocketChannel) : Unit = {
+  def echo(cnxn: AsynchronousSocketChannel): Future[Unit] = {
     for {
       input <- read(cnxn)
       done <- dispatchInput(input, cnxn)
@@ -75,7 +76,7 @@ object Server {
     for {
       numWritten <- writeOnce(bs, cnxn)
       res <- dispatchWrite(numWritten, bs, cnxn)
-    } yield talk(cnxn)
+    } yield echo(cnxn)
   }
 
   def writeOnce(bs: Array[Byte], chn: AsynchronousSocketChannel): Future[Integer] = {
