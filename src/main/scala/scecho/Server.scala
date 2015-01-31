@@ -67,8 +67,9 @@ object Server {
 
   def echoOrExit(input: Array[Byte], cnxn: AsynchronousSocketChannel): Future[Unit] = {
     val p = Promise[Unit]()
-    if (input == "exit".getBytes) p success { () }
-    else p success { write(input,cnxn) }
+    val isExit = (in:Array[Byte]) => in.map(_.toChar).mkString.trim == "exit"
+
+    if (isExit(input)) p success {()} else p success { write(input,cnxn) }
     p.future
   }
 
