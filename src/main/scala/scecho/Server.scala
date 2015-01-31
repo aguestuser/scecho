@@ -7,16 +7,17 @@ import java.nio.channels.{AsynchronousServerSocketChannel, AsynchronousSocketCha
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future, Promise}
-import scala.util.{Failure, Success, Try}
 
 /**
  * Created by aguestuser on 1/28/15.
  */
 
 object Main extends App {
-  Try(args(0).toInt) match {
-    case Failure(e) => throw new IllegalArgumentException("Argument to scecho must be a valid Integer")
-    case Success(i) => Server.listenOn(Server.getChannel(i))
+  import Server._
+  try {
+    listen(getChannel(args(0).toInt))
+  } catch {
+    case e: NumberFormatException => throw new NumberFormatException("Port number for scecho must be a valid int")
   }
 }
 
@@ -25,18 +26,18 @@ object Server {
   def getChannel(port: Int): AsynchronousServerSocketChannel =
     AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(port))
 
-  def listenOn(chn: AsynchronousServerSocketChannel) : Unit = {
-    println("Scecho listening on port %s".format(chn.getLocalAddress.toString))
-    val cnxn = for { cn <- accept(chn) } yield talkTo(cn)
+  def listen(chn: AsynchronousServerSocketChannel) : Unit = {
+    println(s"Scecho listening on port ${chn.getLocalAddress.toString}")
+    val cnxn = for { cn <- accept(chn) } yield talk(cn)
     Await.result(cnxn, Duration.Inf)
-    listenOn(chn)
+    listen(chn)
   }
 
   def accept(listener: AsynchronousServerSocketChannel): Future[AsynchronousSocketChannel] = {
     val p = Promise[AsynchronousSocketChannel]()
     listener.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
       def completed(cnxn: AsynchronousSocketChannel, att: Void) = {
-        println("Client connection received from %s".format(cnxn.getLocalAddress.toString))
+        println(s"Client connection received from ${cnxn.getLocalAddress.toString}")
         p success { cnxn }
       }
       def failed(e: Throwable, att: Void) = p failure { e }
@@ -44,10 +45,10 @@ object Server {
     p.future
   }
 
-  def talkTo(cnxn: AsynchronousSocketChannel) : Unit = {
+  def talk(cnxn: AsynchronousSocketChannel) : Unit = {
     for {
       input <- read(cnxn)
-      done <- echoOrExit(input, cnxn)
+      done <- dispatchInput(input, cnxn)
     } yield done
   }
   
@@ -56,7 +57,7 @@ object Server {
     val p = Promise[Array[Byte]]()
     cnxn.read(buf, null, new CompletionHandler[Integer, Void] {
       def completed(numRead: Integer, att: Void) = {
-        println("Read %s bytes".format(numRead.toString))
+        println(s"Read ${numRead.toString} bytes")
         buf.flip()
         p success { buf.array() }
       }
@@ -65,31 +66,32 @@ object Server {
     p.future
   }
 
-  def echoOrExit(input: Array[Byte], cnxn: AsynchronousSocketChannel): Future[Unit] = {
-    val p = Promise[Unit]()
-    val isExit = (in:Array[Byte]) => in.map(_.toChar).mkString.trim == "exit"
-
-    if (isExit(input)) p success {()} else p success { write(input,cnxn) }
-    p.future
+  def dispatchInput(input: Array[Byte], cnxn: AsynchronousSocketChannel): Future[Unit] = {
+    if (input.map(_.toChar).mkString.trim == "exit") Future.successful(())
+    else Future { write(input,cnxn) }
   }
 
   def write(bs: Array[Byte], cnxn: AsynchronousSocketChannel): Future[Unit] = {
-    val done = (numWritten:Integer) => numWritten == bs.size
     for {
-      nw <- writeOnce(bs, cnxn)
-      res <- { if(done(nw)) Future.successful(()) else write(bs.drop(nw), cnxn) }
-    } yield talkTo(cnxn)
+      numWritten <- writeOnce(bs, cnxn)
+      res <- dispatchWrite(numWritten, bs, cnxn)
+    } yield talk(cnxn)
   }
 
   def writeOnce(bs: Array[Byte], chn: AsynchronousSocketChannel): Future[Integer] = {
     val p = Promise[Integer]()
     chn.write(ByteBuffer.wrap(bs), null, new CompletionHandler[Integer, Void] {
       def completed(numWritten: Integer, att: Void) = {
-        println("Echoed %s bytes".format(numWritten.toString))
+        println(s"Echoed ${numWritten.toString} bytes")
         p success { numWritten }
       }
       def failed(e: Throwable, att: Void) = p failure { e }
     })
     p.future
+  }
+
+  def dispatchWrite(numWritten: Int, bs: Array[Byte], cnxn: AsynchronousSocketChannel): Future[Unit] = {
+    if(numWritten == bs.size) Future.successful(())
+    else write(bs.drop(numWritten), cnxn)
   }
 }
