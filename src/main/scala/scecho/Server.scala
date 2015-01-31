@@ -20,15 +20,12 @@ object Main extends App {
   }
 }
 
-//case class Server(port: Int) {
-
 object Server {
 
   def getChannel(port: Int): AsynchronousServerSocketChannel =
     AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(port))
 
   def listenOn(chn: AsynchronousServerSocketChannel) : Unit = {
-
     println("Scecho listening on port %s".format(chn.getLocalAddress.toString))
 
     val anEcho = for {
@@ -39,6 +36,8 @@ object Server {
 
     Await.result(anEcho, Duration.Inf)
     listenOn(chn)
+    // TODO create execution path that keeps connection to client alive
+    // until message received that says to close it
   }
 
   def accept(listener: AsynchronousServerSocketChannel): Future[AsynchronousSocketChannel] = {
@@ -88,53 +87,3 @@ object Server {
     p.future
   }
 }
-
-
-//  val chn = AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(port))
-
-//  def accept(chn: AsynchronousServerSocketChannel): Future[AsynchronousSocketChannel] = {
-//    val p = Promise[AsynchronousSocketChannel]()
-//
-//    chn.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-//      def completed(cnxn: AsynchronousSocketChannel, att: Void) =  p success {
-//        println("Client connection received from %d".formatted(cnxn.getLocalAddress.toString))
-//        cnxn
-//      }
-//      def failed(e: Throwable, att: Void) = p failure { e }
-//    })
-//    p.future
-//  }
-
-
-//i **THINK** the for comprehension in the main loop
-//does more or less the below. is that right?
-//
-//val cnxn = server.accept(server.chn)
-//
-//cnxn onSuccess {
-//  case ch =>
-//    val input = server.read(ch)
-//
-//    input onSuccess {
-//      case bs =>
-//        val output = server.write(bs,ch)
-//
-//    }
-//
-//    input onFailure {
-//      case e => throw e
-//    }
-//}
-//cnxn onFailure {
-//  case e => throw e
-//}
-
-
-// CHALLENGE:
-
-//Another challenge, this time without hints :), is to see if you can come up with an implementation for something like the Task.asyncfunction we looked at a while ago. To make the challenge extra challenging, I'm not even going to give an example; all you get is the following:
-//val f: Future[Int] = asyncF { cb =>
-// use the callback to either signal, hey, everything worked out,
-// we can fill in f with a real Int;
-// or shoot, we weren't able to get an Int after all, so signal failure somehow
-//}
