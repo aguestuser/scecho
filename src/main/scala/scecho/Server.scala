@@ -50,7 +50,7 @@ object Server {
     for {
       input <- read(cnxn)
       done <- dispatchInput(input, cnxn)
-    } yield done
+    } yield echo(cnxn)
   }
   
   def read(cnxn: AsynchronousSocketChannel): Future[Array[Byte]] = {
@@ -67,16 +67,16 @@ object Server {
     p.future
   }
 
-  def dispatchInput(input: Array[Byte], cnxn: AsynchronousSocketChannel): Future[Unit] = {
+  def dispatchInput(input: Array[Byte], cnxn: AsynchronousSocketChannel) : Future[Unit] = {
     if (input.map(_.toChar).mkString.trim == "exit") Future.successful(())
-    else Future { write(input,cnxn) }
+    else write(input,cnxn)
   }
 
   def write(bs: Array[Byte], cnxn: AsynchronousSocketChannel): Future[Unit] = {
     for {
       numWritten <- writeOnce(bs, cnxn)
       res <- dispatchWrite(numWritten, bs, cnxn)
-    } yield echo(cnxn)
+    } yield res
   }
 
   def writeOnce(bs: Array[Byte], chn: AsynchronousSocketChannel): Future[Integer] = {
