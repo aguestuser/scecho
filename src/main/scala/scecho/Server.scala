@@ -28,9 +28,11 @@ object Server {
 
   def listen(chn: AsynchronousServerSocketChannel) : Unit = {
     println(s"Scecho listening on port ${chn.getLocalAddress.toString}")
+
     val cnxn = accept(chn)
     Await.result(cnxn, Duration.Inf)
     cnxn onSuccess { case c => echo(c) }
+
     listen(chn)
   }
 
@@ -46,12 +48,11 @@ object Server {
     p.future
   }
 
-  def echo(cnxn: AsynchronousSocketChannel): Future[Unit] = {
-    for {
-      input <- read(cnxn)
-      done <- dispatchInput(input, cnxn)
-    } yield echo(cnxn)
-  }
+  def echo(cnxn: AsynchronousSocketChannel): Future[Unit] =
+    { for {
+        input <- read(cnxn)
+        done <- dispatchInput(input, cnxn)
+      } yield done } flatMap { _ => echo(cnxn) }
   
   def read(cnxn: AsynchronousSocketChannel): Future[Array[Byte]] = {
     val buf = ByteBuffer.allocate(1024) // TODO what happens to this memory allocation?
