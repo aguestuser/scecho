@@ -26,38 +26,37 @@ object Server {
   def getChannel(port: Int): AsynchronousServerSocketChannel =
     AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(port))
 
-  def listen(chn: AsynchronousServerSocketChannel) : Unit = {
-    println(s"Scecho listening on port ${chn.getLocalAddress.toString}")
+  def listen(sSock: AsynchronousServerSocketChannel) : Future[Unit] = {
+    println(s"Scecho listening on port ${sSock.getLocalAddress.toString}")
 
-    val cnxn = accept(chn)
-    Await.result(cnxn, Duration.Inf)
-    cnxn onSuccess { case c => echo(c) }
-
-    listen(chn)
+    val sock = accept(sSock)
+    Await.result(sock, Duration.Inf)
+    sock onSuccess { case c => echo(c) }
+    listen(sSock)
   }
 
-  def accept(listener: AsynchronousServerSocketChannel): Future[AsynchronousSocketChannel] = {
+  def accept(sSock: AsynchronousServerSocketChannel): Future[AsynchronousSocketChannel] = {
     val p = Promise[AsynchronousSocketChannel]()
-    listener.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-      def completed(cnxn: AsynchronousSocketChannel, att: Void) = {
-        println(s"Client connection received from ${cnxn.getLocalAddress.toString}")
-        p success { cnxn }
+    sSock.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
+      def completed(sock: AsynchronousSocketChannel, att: Void) = {
+        println(s"Client connection received from ${sock.getLocalAddress.toString}")
+        p success { sock }
       }
       def failed(e: Throwable, att: Void) = p failure { e }
     })
     p.future
   }
 
-  def echo(cnxn: AsynchronousSocketChannel): Future[Unit] =
+  def echo(sock: AsynchronousSocketChannel): Future[Unit] =
     { for {
-        input <- read(cnxn)
-        done <- dispatchInput(input, cnxn)
-      } yield done } flatMap { _ => echo(cnxn) }
-  
-  def read(cnxn: AsynchronousSocketChannel): Future[Array[Byte]] = {
+        input <- read(sock)
+        done <- dispatchInput(input, sock)
+      } yield done } flatMap { _ => echo(sock) }
+
+  def read(sock: AsynchronousSocketChannel): Future[Array[Byte]] = {
     val buf = ByteBuffer.allocate(1024) // TODO what happens to this memory allocation?
     val p = Promise[Array[Byte]]()
-    cnxn.read(buf, null, new CompletionHandler[Integer, Void] {
+    sock.read(buf, null, new CompletionHandler[Integer, Void] {
       def completed(numRead: Integer, att: Void) = {
         println(s"Read ${numRead.toString} bytes")
         buf.flip()
@@ -68,15 +67,15 @@ object Server {
     p.future
   }
 
-  def dispatchInput(input: Array[Byte], cnxn: AsynchronousSocketChannel) : Future[Unit] = {
+  def dispatchInput(input: Array[Byte], sock: AsynchronousSocketChannel) : Future[Unit] = {
     if (input.map(_.toChar).mkString.trim == "exit") Future.successful(())
-    else write(input,cnxn)
+    else write(input,sock)
   }
 
-  def write(bs: Array[Byte], cnxn: AsynchronousSocketChannel): Future[Unit] = {
+  def write(bs: Array[Byte], sock: AsynchronousSocketChannel): Future[Unit] = {
     for {
-      numWritten <- writeOnce(bs, cnxn)
-      res <- dispatchWrite(numWritten, bs, cnxn)
+      numWritten <- writeOnce(bs, sock)
+      res <- dispatchWriteContinuation(numWritten, bs, sock)
     } yield res
   }
 
@@ -92,8 +91,8 @@ object Server {
     p.future
   }
 
-  def dispatchWrite(numWritten: Int, bs: Array[Byte], cnxn: AsynchronousSocketChannel): Future[Unit] = {
+  def dispatchWriteContinuation(numWritten: Int, bs: Array[Byte], sock: AsynchronousSocketChannel): Future[Unit] = {
     if(numWritten == bs.size) Future.successful(())
-    else write(bs.drop(numWritten), cnxn)
+    else write(bs.drop(numWritten), sock)
   }
 }
