@@ -27,7 +27,7 @@ object Server {
     AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(port))
 
   def listen(sSock: AsynchronousServerSocketChannel) : Future[Unit] = {
-    println(s"Scecho listening on port ${sSock.getLocalAddress.toString}")
+    println(s"Scecho listening on port ${sSock.getLocalAddress}")
 
     val sock = accept(sSock)
     Await.result(sock, Duration.Inf)
@@ -39,7 +39,7 @@ object Server {
     val p = Promise[AsynchronousSocketChannel]()
     sSock.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
       def completed(sock: AsynchronousSocketChannel, att: Void) = {
-        println(s"Client connection received from ${sock.getLocalAddress.toString}")
+        println(s"Client connection received from ${sock.getLocalAddress}")
         p success { sock }
       }
       def failed(e: Throwable, att: Void) = p failure { e }
@@ -83,7 +83,7 @@ object Server {
     val p = Promise[Integer]()
     chn.write(ByteBuffer.wrap(bs), null, new CompletionHandler[Integer, Void] {
       def completed(numWritten: Integer, att: Void) = {
-        println(s"Echoed ${numWritten.toString} bytes")
+        println(s"Echoed $numWritten bytes")
         p success { numWritten }
       }
       def failed(e: Throwable, att: Void) = p failure { e }
